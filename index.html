@@ -64,6 +64,10 @@
   .answerbox textarea, .answerbox input { width:100%; min-height: 52px; padding: 13px 14px; border-radius: 14px; border:1px solid var(--line); outline:none; background:#fff; }
   .answerbox textarea { min-height: 150px; resize: vertical; }
   .reference { margin-top: 12px; padding: 14px; border-radius: 14px; background: #f8fafc; line-height: 1.65; white-space: pre-wrap; display:none; }
+  .inlineFeedback { margin-top: 14px; padding: 13px 15px; border-radius: 14px; background: #f8fafc; border: 1px solid var(--line); line-height: 1.6; white-space: pre-wrap; display:none; }
+  .inlineFeedback.good { background: #e8f7ed; color: var(--good); border-color: rgba(21,128,61,.2); }
+  .inlineFeedback.bad { background: #fff1f1; color: var(--bad); border-color: rgba(185,28,28,.22); }
+  .inlineFeedback.info { background: #f8fafc; color: #374151; }
   .side { display:grid; gap: 16px; align-content:start; }
   .stats { padding: 18px; }
   .statgrid { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -276,8 +280,13 @@ function submitAnswer(q) {
     if (!val.trim()) return toast('先输入答案，或点“显示答案”。');
     const ok = normalizeAnswer(val) === normalizeAnswer(q.answer);
     record(q, ok, val);
-    showResult(q, ok, val);
-    document.getElementById('reference').style.display = 'block';
+    if (ok) {
+      nextQ();
+    } else {
+      const ref = document.getElementById('reference');
+      if (ref) ref.style.display = 'block';
+      setInlineFeedback(`答错了。正确答案：\n${answerText(q)}`, 'bad');
+    }
     return;
   }
   if (!isChoice(q)) return;
@@ -285,8 +294,12 @@ function submitAnswer(q) {
   const chosen = Array.from(selected).sort().join('');
   const ok = chosen === String(q.answer).split('').sort().join('');
   record(q, ok, chosen);
-  markOptions(q, chosen);
-  showResult(q, ok, chosen);
+  if (ok) {
+    nextQ();
+  } else {
+    markOptions(q, chosen);
+    setInlineFeedback(`答错了。正确答案：\n${answerText(q)}`, 'bad');
+  }
 }
 function markOptions(q, chosen='') {
   const ans = new Set(String(q.answer).split(''));
@@ -297,14 +310,28 @@ function markOptions(q, chosen='') {
     b.classList.toggle('wrong', cho.has(k) && !ans.has(k));
   });
 }
+function setInlineFeedback(msg, type='info') {
+  const root = document.getElementById('quiz');
+  if (!root) return;
+  let el = document.getElementById('inlineFeedback');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'inlineFeedback';
+    el.className = 'inlineFeedback';
+    root.appendChild(el);
+  }
+  el.textContent = msg;
+  el.className = `inlineFeedback ${type}`;
+  el.style.display = 'block';
+}
 function showAnswer(q) {
   if (isChoice(q)) {
     markOptions(q, Array.from(selected).join(''));
-    showResult(q, null, Array.from(selected).sort().join('') || '未作答');
+    setInlineFeedback(`正确答案：\n${answerText(q)}`, 'info');
   } else {
     const ref = document.getElementById('reference');
     if (ref) ref.style.display = 'block';
-    if (q.type === '填空题') showResult(q, null, '未作答');
+    if (q.type === '填空题') setInlineFeedback(`正确答案：\n${answerText(q)}`, 'info');
   }
 }
 function record(q, correct, chosen) {
