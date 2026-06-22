@@ -49,15 +49,21 @@
   .star.on { color:#d97706; background:#fff7ed; }
   .question { font-size: 22px; font-weight: 760; line-height: 1.52; margin: 0 0 22px; white-space: pre-wrap; }
   .options { display: grid; gap: 12px; margin: 18px 0; }
-  .option { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; padding: 15px 16px; border: 1px solid var(--line); background: #fff; border-radius: 18px; text-align: left; min-height: 58px; }
+  .option { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; padding: 15px 16px; border: 1px solid var(--line); background: #fff; border-radius: 18px; text-align: left; min-height: 58px; transition: .15s ease; }
   .option:hover { border-color: rgba(155,28,49,.36); box-shadow: 0 12px 24px rgba(155,28,49,.06); }
   .option.selected { border-color: var(--brand); background: #fff6f7; }
-  .option.correct { border-color: rgba(21,128,61,.55); background: #ecfdf3; }
-  .option.wrong { border-color: rgba(185,28,28,.55); background: #fff1f2; }
+  .option.correct { border-color: rgba(21,128,61,.8); background: #dcfce7; box-shadow: inset 0 0 0 1px rgba(21,128,61,.22); }
+  .option.wrong { border-color: rgba(185,28,28,.85); background: #fee2e2; box-shadow: inset 0 0 0 1px rgba(185,28,28,.22); }
+  .option.missed-correct { border-style: solid; }
+  .option.picked-wrong { animation: shake .18s linear 2; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 33%{transform:translateX(-3px)} 66%{transform:translateX(3px)} }
   .key { display:inline-flex; align-items:center; justify-content:center; width: 32px; height: 32px; border-radius: 999px; background: #f3f4f6; font-weight: 800; color:#4b5563; }
   .option.selected .key { background: var(--brand); color: #fff; }
   .option.correct .key { background: var(--good); color:#fff; }
   .option.wrong .key { background: var(--bad); color:#fff; }
+  .resultTag { display: inline-flex; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; vertical-align: middle; }
+  .resultTag.good { background: rgba(21,128,61,.12); color: var(--good); }
+  .resultTag.bad { background: rgba(185,28,28,.12); color: var(--bad); }
   .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top: 22px; }
   .actions .spacer { flex: 1; }
   .answerbox { margin-top: 16px; padding: 16px; background: #fff; border: 1px solid var(--line); border-radius: 18px; }
@@ -234,7 +240,8 @@ function renderQuiz() {
     <h2 class="question">${escapeHTML(q.question)}</h2>`;
 
   if (isChoice(q)) {
-    html += `<div class="options">${(q.options || []).map(o => `<button class="option" data-key="${escapeHTML(o.key)}"><span class="key">${escapeHTML(o.key)}</span><span>${escapeHTML(o.text)}</span></button>`).join('')}</div>`;
+    html += `<div class="options">${(q.options || []).map(o => `<button class="option" data-key="${escapeHTML(o.key)}"><span class="key">${escapeHTML(o.key)}</span><span class="optText">${escapeHTML(o.text)}</span></button>`).join('')}</div>`;
+    html += `<div class="inlineFeedback" id="inlineFeedback"></div>`;
     html += `<div class="actions">
       <button class="btn" id="prevBtn">上一题</button>
       <button class="btn primary" id="submitBtn">提交答案</button>
@@ -298,17 +305,39 @@ function submitAnswer(q) {
     nextQ();
   } else {
     markOptions(q, chosen);
-    setInlineFeedback(`答错了。正确答案：\n${answerText(q)}`, 'bad');
+    if (q.type === '多选题') {
+      setInlineFeedback(`答错了。红色=你错选的选项；绿色=正确选项（包括漏选项）。\n正确答案：\n${answerText(q)}`, 'bad');
+    } else {
+      setInlineFeedback(`答错了。正确答案：\n${answerText(q)}`, 'bad');
+    }
   }
 }
 function markOptions(q, chosen='') {
-  const ans = new Set(String(q.answer).split(''));
-  const cho = new Set(String(chosen).split(''));
+  const ans = new Set(String(q.answer).split('').filter(Boolean));
+  const cho = new Set(String(chosen).split('').filter(Boolean));
   document.querySelectorAll('.option').forEach(b => {
     const k = b.dataset.key;
-    b.classList.toggle('correct', ans.has(k));
-    b.classList.toggle('wrong', cho.has(k) && !ans.has(k));
+    const isAnswer = ans.has(k);
+    const isChosen = cho.has(k);
+    b.classList.remove('correct', 'wrong', 'picked-correct', 'picked-wrong', 'missed-correct');
+    b.querySelectorAll('.resultTag').forEach(tag => tag.remove());
+
+    if (isAnswer) {
+      b.classList.add('correct');
+      b.classList.add(isChosen ? 'picked-correct' : 'missed-correct');
+      addResultTag(b, isChosen ? '已选正确' : '漏选正确', 'good');
+    } else if (isChosen) {
+      b.classList.add('wrong', 'picked-wrong');
+      addResultTag(b, '错选', 'bad');
+    }
   });
+}
+function addResultTag(optionEl, text, type) {
+  const target = optionEl.querySelector('.optText') || optionEl;
+  const tag = document.createElement('span');
+  tag.className = `resultTag ${type}`;
+  tag.textContent = text;
+  target.appendChild(tag);
 }
 function setInlineFeedback(msg, type='info') {
   const root = document.getElementById('quiz');
@@ -355,12 +384,7 @@ ${answerText(q)}`;
   if (!d.open) d.showModal();
 }
 function toast(msg) {
-  const d = document.getElementById('resultDialog');
-  document.getElementById('modalTitle').textContent = '提示';
-  document.getElementById('modalTitle').style.color = 'var(--brand)';
-  document.getElementById('modalText').textContent = msg;
-  document.getElementById('modalAns').textContent = '';
-  if (!d.open) d.showModal();
+  setInlineFeedback(msg, 'info');
 }
 function nextQ() { if (!list.length) return; idx = (idx + 1) % list.length; renderQuiz(); }
 function prevQ() { if (!list.length) return; idx = (idx - 1 + list.length) % list.length; renderQuiz(); }
